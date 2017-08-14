@@ -1,113 +1,51 @@
 <a name="ReadMeAnchor"></a>
-<h1>Welcome to Kevin LaFramboise's SmartThings Repository</h1>
 
-Below you will find a list of the SmartApps and Device Handlers that I've created.  I've included a short description of what they can do and included links to their topics in the SmartThings forum.
+<h1>Kevin LaFramboise's Device Type Handlers</h1>
+
+<ul>
+	<li><a href="#aeon-labs-aeotec-doorbell">Aeon Labs Aeotec Doorbell</a></li>
+	<li><a href="#aeon-labs-multifunction-siren">Aeon Labs Multifunction Siren</a></li>
+	<li><a href="#alarm-switch">Alarm Switch</a></li>
+	<li><a href="#dome-door-sensor">Dome Door Sensor</a></li>
+	<li><a href="#dome-doorwindow-sensor-pro">Dome Door/Window Sensor Pro</a></li>
+	<li><a href="#dome-leak-sensor">Dome Leak Sensor</a></li>
+	<li><a href="#dome-motion-sensor">Dome Motion Sensor</a></li>
+	<li><a href="#dome-mouser">Dome Mouser</a></li>			
+	<li><a href="#dome-on-off-plug">Dome On Off Plug</a></li>
+	<li><a href="#dome-siren">Dome Siren</a></li>
+	<li><a href="#dome-water-shut-off">Dome Water Shut-Off</a></li>
+	<li><a href="#ecolink-motion-sensor">Ecolink Motion Sensor</a></li>
+	<li><a href="#everspring-motion-detector">Everspring Motion Detector</a></li>
+	<li><a href="#everspring-temperaturehumidity-detector">Everspring Temperature/Humidity Detector</a></li>
+	<li><a href="#fibaro-motion-sensor-zw5">Fibaro Motion Sensor ZW5</a></li>
+	<li><a href="#fibaro-swipe">Fibaro Swipe</a></li>
+	<li><a href="#forcible-mobile-presence">Forcible Mobile Presence</a></li>
+	<li><a href="#gocontrollinear-doorwindow-sensor">GoControl/Linear Door/Window Sensor</a></li>
+	<li><a href="#gocontrollinear-multifunction-contact-sensor">GoControl/Linear Multifunction Contact Sensor</a></li>
+	<li><a href="#gocontrollinear-motion-sensor">GoControl/Linear Motion Sensor</a></li>
+	<li><a href="#gocontrollinear-multifunction-siren">GoControl/Linear/Vision Multifunction Siren</a></li>
+	<li><a href="#leaksmart-water-valve">LeakSmart Water Valve</a></li>
+	<li><a href="#zoozmonoprice-4-in-1-multisensor">Monoprice 4-in-1 Motion Sensor with Temperature, Humidity, and Light Sensors</a></li>
+	<li><a href="#visionmonoprice-shock-sensor">Monoprice Shock Sensor</a></li>
+	<li><a href="#monoprice-z-wave-plus-doorwindow-sensor">Monoprice Z-Wave Plus Door/Window Sensor</a></li>
+	<li><a href="#polling-cree-bulb">Polling Cree Bulb</a></li>
+	<li><a href="#polling-ge-link-bulb">Polling GE Link Bulb</a></li>
+	<li><a href="#remotec-zxt-310-ir-extender">Remotec ZXT-310 IR Extender</a></li>
+	<li><a href="#thingshield-timer">ThingShield Timer</a></li>
+	<li><a href="#visionmonoprice-shock-sensor">Vision Shock Sensor</a></li>
+	<li><a href="#wireless-smoke-detector-sensor">Wireless Smoke Detector Sensor</a></li>
+	<li><a href="#zipato-multisound-siren">Zipato Multisound Siren</a></li>
+	<li><a href="#zoozmonoprice-4-in-1-multisensor">Zooz 4-in-1 Multisensor</a></li>
+	<li><a href="#zooz-power-switchzooz-smart-plug">Zooz Smart Plug</a></li>
+	<li><a href="#zooz-power-strip">Zooz Power Strip</a></li>
+	<li><a href="#zooz-power-switchzooz-smart-plug">Zooz Power Switch</a></li>
+	<li><a href="#zooz-smart-chime">Zooz Smart Chime</a></li>
+	<li><a href="#zooz-water-sensor">Zooz Water Sensor</a></li>
+</ul>
 
 If you like the SmartApps and Device Handlers I've created and you would like to make a donation, please go to https://www.paypal.me/krlaframboise
 
 <hr />
-
-<ul>
-	<li><p><a href="#smartapps">SmartApps</a></p>
-		<ul>
-			<li><a href="#home-presence-manager">Home Presence Manager</a></li>
-			<li><a href="#simple-device-viewer">Simple Device Viewer</a></li>
-			<li><a href="#simple-event-logger">Simple Event Logger</a></li>
-		</ul>
-	</li>
-</ul>
-<ul>
-	<li><p><a href="#device-type-handlers">Device Type Handlers</a></p>
-		<ul>
-			<li><a href="#aeon-labs-aeotec-doorbell">Aeon Labs Aeotec Doorbell</a></li>
-			<li><a href="#aeon-labs-multifunction-siren">Aeon Labs Multifunction Siren</a></li>
-			<li><a href="#alarm-switch">Alarm Switch</a></li>
-			<li><a href="#dome-door-sensor">Dome Door Sensor</a></li>
-			<li><a href="#dome-doorwindow-sensor-pro">Dome Door/Window Sensor Pro</a></li>
-			<li><a href="#dome-leak-sensor">Dome Leak Sensor</a></li>
-			<li><a href="#dome-motion-sensor">Dome Motion Sensor</a></li>
-			<li><a href="#dome-mouser">Dome Mouser</a></li>			
-			<li><a href="#dome-on-off-plug">Dome On Off Plug</a></li>
-			<li><a href="#dome-siren">Dome Siren</a></li>
-			<li><a href="#dome-water-shut-off">Dome Water Shut-Off</a></li>			
-			<li><a href="#ecolink-motion-sensor">Ecolink Motion Sensor</a></li>
-			<li><a href="#everspring-motion-detector">Everspring Motion Detector</a></li>
-			<li><a href="#everspring-temperaturehumidity-detector">Everspring Temperature/Humidity Detector</a></li>
-			<li><a href="#fibaro-motion-sensor-zw5">Fibaro Motion Sensor ZW5</a></li>
-			<li><a href="#fibaro-swipe">Fibaro Swipe</a></li>
-			<li><a href="#forcible-mobile-presence">Forcible Mobile Presence</a></li>
-			<li><a href="#gocontrollinear-doorwindow-sensor">GoControl/Linear Door/Window Sensor</a></li>
-			<li><a href="#gocontrollinear-multifunction-contact-sensor">GoControl/Linear Multifunction Contact Sensor</a></li>
-			<li><a href="#gocontrollinear-motion-sensor">GoControl/Linear Motion Sensor</a></li>
-			<li><a href="#gocontrollinear-multifunction-siren">GoControl/Linear/Vision Multifunction Siren</a></li>
-			<li><a href="#leaksmart-water-valve">LeakSmart Water Valve</a></li>
-			<li><a href="#zoozmonoprice-4-in-1-multisensor">Monoprice 4-in-1 Motion Sensor with Temperature, Humidity, and Light Sensors</a></li>
-			<li><a href="#visionmonoprice-shock-sensor">Monoprice Shock Sensor</a></li>
-			<li><a href="#monoprice-z-wave-plus-doorwindow-sensor">Monoprice Z-Wave Plus Door/Window Sensor</a></li>
-			<li><a href="#polling-cree-bulb">Polling Cree Bulb</a></li>
-			<li><a href="#polling-ge-link-bulb">Polling GE Link Bulb</a></li>
-			<li><a href="#remotec-zxt-310-ir-extender">Remotec ZXT-310 IR Extender</a></li>
-			<li><a href="#thingshield-timer">ThingShield Timer</a></li>
-			<li><a href="#visionmonoprice-shock-sensor">Vision Shock Sensor</a></li>
-			<li><a href="#wireless-smoke-detector-sensor">Wireless Smoke Detector Sensor</a></li>
-			<li><a href="#zipato-multisound-siren">Zipato Multisound Siren</a></li>
-			<li><a href="#zoozmonoprice-4-in-1-multisensor">Zooz 4-in-1 Multisensor</a></li>
-			<li><a href="#zooz-power-switchzooz-smart-plug">Zooz Smart Plug</a></li>
-			<li><a href="#zooz-power-strip">Zooz Power Strip</a></li>
-			<li><a href="#zooz-power-switchzooz-smart-plug">Zooz Power Switch</a></li>
-			<li><a href="#zooz-smart-chime">Zooz Smart Chime</a></li>
-			<li><a href="#zooz-water-sensor">Zooz Water Sensor</a></li>
-		</ul>
-	</li>
-</ul>
-
-<hr />
-
-<h2>SmartApps</h2>
-
-<h3>Home Presence Manager</h3>
-<ul>
-<li>Uses Motion Sensors, Contact Sensors and Virtual Presence Sensors to keep track of the room you're in and turn on and off lights as you move throughout the house.<br /></li>
-
-<li><a href="https://community.smartthings.com/t/release-home-presence-manager/48449?u=krlaframboise">View Documentation in SmartThings Forum</a></li>
-<li><a href="https://github.com/krlaframboise/SmartThings/blob/master/smartapps/krlaframboise/home-presence-manager.src/home-presence-manager.groovy">View Home Presence Manager - SmartApp Code</a></li>
-</ul>
-
-<hr />
-
-<h3>Simple Device Viewer</h3>
-
-<ul>
-<li>Allows you to easily see a list of information about your devices like battery percentages, temperatures, how long since last event, switch state, etc.<br /></li>
-
-<li>Receive Push and/or SMS notifications based on temperature, battery level, and/or time since last event.<br /></li>
-
-<li>It can automatically poll the devices at a specified interval.<br /></li>
-
-<li>Turn Off All Lights and/or Switches with a push of a button.<br /></li>
-
-<li><a href="https://community.smartthings.com/t/release-simple-device-viewer/42481?u=krlaframboise">View Documentation in SmartThings Forum</a><br /></li>
-<li><a href="https://github.com/krlaframboise/SmartThings/blob/master/smartapps/krlaframboise/simple-device-viewer.src/simple-device-viewer.groovy">View Simple Device Viewer - SmartApp Code</a></li>
-</ul>
-
-<hr />
-
-<h3>Simple Event Logger</h3>
-
-<ul>
-<li>Simple Event Logger is a fully customizable SmartApp that allows you to accurately log all device activity to a Google Sheets Spreadsheet.</li>
-<li>Each event is stored on a separate row so that you have their exact time and details.</li>
-<li>Google Sheets has an easy to use filter feature which allows you to do things like view all events for specific device(s), in a specified date/range and/or specific types of events like temperature.</li>
-<li>Since all of your data will be stored in one spreadsheet, advanced users can easily generate pivot tables and graphs for any information they need. It also eliminates the need to update the code in multiple spreadsheets every time a new version is released.</li>
-<li><a href="https://github.com/krlaframboise/SmartThings/blob/master/smartapps/krlaframboise/simple-event-logger.src/ReadMe.md#simple-event-logger">View Installation Instructions and Documentation</a></li>
-<li><a href="https://community.smartthings.com/t/release-simple-event-logger/69879?u=krlaframboise">View SmartThings Forum Topic</a></li>
-<li><a href="https://github.com/krlaframboise/SmartThings/blob/master/smartapps/krlaframboise/simple-event-logger.src/simple-event-logger.groovy">View Simple Event Logger - SmartApp Code</a></li>
-<li><a href="https://github.com/krlaframboise/SmartThings/blob/master/smartapps/krlaframboise/simple-event-logger.src/Code.gs">View Simple Event Logger - Google Sheets Web App Code</a></li>
-</ul>
-
-<hr />
-
-<h2>Device Type Handlers</h2>
 
 <h3>Aeon Labs Aeotec Doorbell</h3>
 

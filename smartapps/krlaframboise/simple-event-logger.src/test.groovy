@@ -1,5 +1,5 @@
 /**
- *  Simple Event Logger - SmartApp v 1.3
+ *  Simple Event Logger - SmartApp v 1.3 (TEST)
  *
  *  Author: 
  *    Kevin LaFramboise (krlaframboise)
@@ -8,6 +8,9 @@
  *    https://github.com/krlaframboise/SmartThings/tree/master/smartapps/krlaframboise/simple-event-logger.src#simple-event-logger
  *
  *  Changelog:
+ *
+ *    1.3 (TEST) (03/22/2017)
+ *      - Display google script version that was returned by Google if it doesn't match expected version.
  *
  *    1.3 (02/26/2017)
  *      - Requires Google Script Update
@@ -478,12 +481,13 @@ private verifyGSVersion() {
 	
 		httpGet(params) { objResponse ->
 			if (objResponse?.status == 200) {
-				if ("${objResponse.data}" == "Version ${gsVersion()}") {
-					logTrace "The ${getWebAppName()} is using the correct version of the Google Script code."
-				}
-				else {
-					logWarn "The ${getWebAppName()} is not using version ${gsVersion()} of the Google Script code which is required by version ${version()} of the Simple Event Logger SmartApp.\n\nPlease update to the latest version of this SmartApp and the Google Script code to ensure that everything works properly.\n\nWhen deploying a new version of the Google Script Code in the Google Sheet, make sure you change the 'Product Version' field to 'New'."
-				}
+				log.trace "${objResponse.data}"
+				// if ("${objResponse.data}" == "Version ${gsVersion()}") {
+					// logTrace "The ${getWebAppName()} is using the correct version of the Google Script code."
+				// }
+				// else {
+					// logWarn "The ${getWebAppName()} is using version '${objResponse.data}' of the Google Script Code ininstead of version ${gsVersion()} of the Google Script code which is required by version ${version()} of the Simple Event Logger SmartApp.\n\nPlease update to the latest version of this SmartApp and the Google Script code to ensure that everything works properly.\n\nWhen deploying a new version of the Google Script Code in the Google Sheet, make sure you change the 'Product Version' field to 'New'."
+				// }
 			}
 			else {
 				logWarn "Unable to connect to the ${getWebAppName()}.  Make sure you followed the instructions for setting up and testing it."

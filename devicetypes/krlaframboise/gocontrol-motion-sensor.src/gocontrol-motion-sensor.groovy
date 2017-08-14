@@ -1,5 +1,5 @@
 /**
- *  GoControl Motion Sensor v1.2.1
+ *  GoControl Motion Sensor v1.3.2
  *    (Model: WAPIRZ-1)
  *
  *  Author: 
@@ -9,6 +9,16 @@
  *    https://community.smartthings.com/t/release-gocontrol-door-window-sensor-motion-sensor-and-siren-dth/50728?u=krlaframboise
  *
  *  Changelog:
+ *
+ *    1.3.2 (04/23/2017)
+ *    	- SmartThings broke parse method response handling so switched to sendhubaction.
+ *
+ *    1.3.1 (04/20/2017)
+ *      - Added fingerprint.
+ *      - Added workaround for ST Health Check bug.
+ *
+ *    1.3 (03/12/2017)
+ *      - Added Health Check.
  *
  *    1.2.1 (07/31/2016)
  *      - Fix iOS UI bug with tamper tile.
@@ -39,9 +49,12 @@ metadata {
 		capability "Tamper Alert"
 		capability "Refresh"
 		capability "Configuration"
+		capability "Health Check"
 
-		attribute "lastPoll", "number"
-
+		attribute "lastCheckin", "string"
+ 
+		fingerprint mfr:"014F", prod:"2002", model:"0203"
+ 
 		fingerprint deviceId:"0x2001", inClusters:"0x71, 0x85, 0x80, 0x72, 0x30, 0x86, 0x31, 0x70, 0x84"
 	}
 
@@ -49,27 +62,33 @@ metadata {
 		input "temperatureOffset", "number",
 			title: "Temperature Offset:\n(Allows you to adjust the temperature being reported if it's always high or low by a specific amount.  Example: Enter -3 to make it report 3° lower or enter 3 to make it report 3° higher.)",
 			range: "-100..100",
-			defaultValue: 0,
+			defaultValue: tempOffsetSetting,
 			displayDuringSetup: true,
 			required: false
 		input "temperatureThreshold", "number",
 			title: "Temperature Change Threshold:\n(You can use this setting to prevent the device from bouncing back and forth between the same two temperatures.  Example:  If the device is repeatedly reporting 68° and 69°, you can change this setting to 2 and it won't report a new temperature unless 68° changes to 66° or 70°.)",
 			range: "1..100",
-			defaultValue: 1,
+			defaultValue: tempThresholdSetting,
 			displayDuringSetup: true,
 			required: false
 		input "retriggerWaitTime", "number", 
 			title: "Re-Trigger Wait Time (Minutes)\n(When the device detects motion, it waits for at least 1 minute of inactivity before sending the inactive event.  The default re-trigger wait time is 3 minutes.)", 
 			range: "1..255", 
-			defaultValue: 3, 
+			defaultValue: retriggerWaitTimeSetting, 
 			displayDuringSetup: true,
 			required: false
-		input "reportBatteryEvery", "number", 
-			title: "Minimum Battery Reporting Frequency? (Hours)\n(Allows you to limit the frequency of battery reporting to extend the life of the battery)", 
-			defaultValue: 24,
-			range: "4..167",
-			displayDuringSetup: true, 
-			required: false
+		input "checkinInterval", "enum",
+			title: "Checkin Interval:",
+			defaultValue: checkinIntervalSetting,
+			required: false,
+			displayDuringSetup: true,
+			options: checkinIntervalOptions.collect { it.name }
+		input "reportBatteryEvery", "enum",
+			title: "Battery Reporting Interval:",
+			defaultValue: batteryReportingIntervalSetting,
+			required: false,
+			displayDuringSetup: true,
+			options: checkinIntervalOptions.collect { it.name }
 		input "debugOutput", "bool", 
 			title: "Enable debug logging?", 
 			defaultValue: false, 
@@ -111,8 +130,50 @@ metadata {
 	}
 }
 
-def updated() {
-	refresh()
+def updated() {	
+	if (!isDuplicateCommand(state.lastUpdated, 3000)) {
+		state.lastUpdated = new Date().time
+		logTrace "updated()"
+
+		refresh()
+	}
+}
+
+def configure() {	
+	logTrace "configure()"
+	def cmds = []
+	
+	if (!device.currentValue("motion")) {
+		sendEvent(name: "motion", value: "active", isStateChange: true, displayed: false)
+	}
+	
+	if (!state.isConfigured) {
+		logTrace "Waiting 1 second because this is the first time being configured"
+		// Give inclusion time to finish.
+		cmds << "delay 1000"			
+	}
+	
+	initializeCheckin()
+	
+	cmds += [
+		wakeUpIntervalSetCmd(checkinIntervalSettingMinutes),
+		retriggerWaitTimeSetCmd(),
+		batteryGetCmd(),
+		temperatureGetCmd()
+	]
+	return delayBetween(cmds, 250)
+}
+
+private initializeCheckin() {
+	// Set the Health Check interval so that it can be skipped once plus 2 minutes.
+	def checkInterval = ((checkinIntervalSettingMinutes * 2 * 60) + (2 * 60))
+	
+	sendEvent(name: "checkInterval", value: checkInterval, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
+}
+
+// Required for HealthCheck Capability, but doesn't actually do anything because this device sleeps.
+def ping() {
+	logDebug "ping()"	
 }
 
 def refresh() {	
@@ -129,21 +190,35 @@ private clearTamperDetected() {
 }
 
 private retriggerWaitTimeSetCmd() {
-	logDebug "Setting re-trigger wait time to ${getRetriggerWaitTime()} minutes"
+	logTrace "Setting re-trigger wait time to ${retriggerWaitTimeSetting} minutes"
 	
-	zwave.configurationV1.configurationSet(configurationValue: [getRetriggerWaitTime()], parameterNumber: 1, size: 1).format()	
+	return zwave.configurationV1.configurationSet(scaledConfigurationValue: retriggerWaitTimeSetting, parameterNumber: 1, size: 1).format()	
+}
+
+private wakeUpIntervalSetCmd(minutesVal) {
+	state.checkinIntervalMinutes = minutesVal
+	logTrace "wakeUpIntervalSetCmd(${minutesVal})"
+	
+	return zwave.wakeUpV2.wakeUpIntervalSet(seconds:(minutesVal * 60), nodeid:zwaveHubNodeId).format()
+}
+
+private wakeUpNoMoreInfoCmd() {
+	return zwave.wakeUpV2.wakeUpNoMoreInformation().format()
 }
 
 private temperatureGetCmd() {
-	zwave.sensorMultilevelV2.sensorMultilevelGet().format()
+	return zwave.sensorMultilevelV2.sensorMultilevelGet().format()
 }
 
 private batteryGetCmd() {
-	zwave.batteryV1.batteryGet().format()
+	return zwave.batteryV1.batteryGet().format()
 }
+
 
 def parse(String description) {	
 	def result = []
+	
+	sendEvent(name: "lastCheckin", value: convertToLocalTimeString(new Date()), displayed: false, isStateChange: true)
 	
 	def cmd = zwave.parse(description, [0x71: 2, 0x80: 1, 0x30: 1, 0x31: 2, 0x70: 1, 0x84: 1])
 	if (cmd) {
@@ -152,43 +227,41 @@ def parse(String description) {
 	else {
 		logDebug "Unknown Description: $desc"
 	}
-
-	result << createEvent(name: "lastPoll",value: new Date().time, isStateChange: true, displayed: false)
 	return result
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.wakeupv1.WakeUpNotification cmd)
 {
-	logDebug "Woke Up"
-
+	logTrace "WakeUpNotification"
 	def result = []
 
-	result << createEvent(descriptionText: "${device.displayName} woke up", isStateChange: false)
-	
 	if (state.pendingConfig) {
 		state.pendingConfig = false
-		result += response([
-			retriggerWaitTimeSetCmd(),
-			batteryGetCmd(),
-			temperatureGetCmd(),
-			"delay 3000"
-		])
+		result += configure()
 	}
-	else if (canCheckBattery()) {
-		result += response([
-			batteryGetCmd(),
-			"delay 2000"
-		])
+	else if (canReportBattery()) {
+		result << batteryGetCmd()
 	}
-	result << response(zwave.wakeUpV1.wakeUpNoMoreInformation().format())
-
-	return result
+	if (result) {
+		result << "delay 2000"
+	}
+	result << wakeUpNoMoreInfoCmd()
+	return sendResponse(result)
 }
 
-private canCheckBattery() {
-	def reportEveryHours = safeToInteger(settings.reportBatteryEvery, 4)
-	
-	return (!state.lastBatteryReport || ((new Date().time) - state.lastBatteryReport > (reportEveryHours * 60 * 60 * 1000)))
+private sendResponse(cmds) {
+	def actions = []
+	cmds?.each { cmd ->
+		actions << new physicalgraph.device.HubAction(cmd)
+	}	
+	sendHubCommand(actions)
+	return []
+}
+
+private canReportBattery() {
+	def reportEveryMS = (batteryReportingIntervalSettingMinutes * 60 * 1000)
+		
+	return (!state.lastBatteryReport || ((new Date().time) - state.lastBatteryReport > reportEveryMS)) 
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicSet cmd) {	
@@ -204,28 +277,20 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicSet cmd) {
 	return result
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {	
-	logDebug "Battery: ${cmd.batteryLevel}%"
+def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {
+	logTrace "BatteryReport: $cmd"
+	def val = (cmd.batteryLevel == 0xFF ? 1 : cmd.batteryLevel)
+	if (val > 100) {
+		val = 100
+	}
+	state.lastBatteryReport = new Date().time	
+	logDebug "Battery ${val}%"
 	
+	def isNew = (device.currentValue("battery") != val)
+			
 	def result = []
-	def map = [ 
-		name: "battery", 		
-		unit: "%"
-	]
-	
-	if (cmd.batteryLevel == 0xFF) {
-		map.value = 1
-		map.descriptionText = "Battery is low"
-		map.displayed = true
-		map.isStateChange = true
-	}
-	else {
-		map.value = cmd.batteryLevel
-		map.displayed = false
-	}
-		
-	state.lastBatteryReport = new Date().time		
-	result << createEvent(map)
+	result << createEvent(name: "battery", value: val, unit: "%", display: isNew, isStateChange: isNew)
+
 	return result
 }
 
@@ -259,15 +324,15 @@ def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv2.SensorMultilevelR
 	
 	if (cmd.sensorType == 1) {
 		def cmdScale = cmd.scale == 1 ? "F" : "C"
-		def newTemp = safeToInteger(convertTemperatureIfNeeded(cmd.scaledSensorValue, cmdScale, cmd.precision), 0)
+		def newTemp = safeToInt(convertTemperatureIfNeeded(cmd.scaledSensorValue, cmdScale, cmd.precision), 0)
 				
-		if (getTempOffset() != 0) {
-			newTemp = (newTemp + getTempOffset())
-			logDebug "Adjusted temperature by ${getTempOffset()}°"
+		if (tempOffsetSetting != 0) {
+			newTemp = (newTemp + tempOffsetSetting)
+			logDebug "Adjusted temperature by ${tempOffsetSetting}°"
 		}		
 		
-		def highTemp = (getCurrentTemp() + getTempThreshold())
-		def lowTemp = (getCurrentTemp() - getTempThreshold())
+		def highTemp = (getCurrentTemp() + tempThresholdSetting)
+		def lowTemp = (getCurrentTemp() - tempThresholdSetting)
 		if (newTemp >= highTemp || newTemp <= lowTemp) {
 			result << createEvent(
 				name: "temperature",
@@ -277,48 +342,102 @@ def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv2.SensorMultilevelR
 				displayed: true)
 		}
 		else {
-			logDebug "Ignoring new temperature of $newTemp° because the change is within the ${getTempThreshold()}° threshold."
+			logDebug "Ignoring new temperature of $newTemp° because the change is within the ${tempThresholdSetting}° threshold."
 		}
 	}
 	return result
 }
 
-private getRetriggerWaitTime() {
-	return safeToInteger(settings.retriggerWaitTime, 3)
+private getRetriggerWaitTimeSetting() {
+	return safeToInt(settings?.retriggerWaitTime, 3)
 }
 
 private getCurrentTemp() {
-	return safeToInteger(device.currentValue("temperature"), 0)
+	return safeToInt(device.currentValue("temperature"), 0)
 }
 
-private getTempThreshold() {
-	return safeToInteger(settings.temperatureThreshold, 1)
+private getTempThresholdSetting() {
+	return safeToInt(settings?.temperatureThreshold, 1)
 }
 
-private getTempOffset() {
-	return safeToInteger(settings.temperatureOffset, 0)
+private getTempOffsetSetting() {
+	return safeToInt(settings?.temperatureOffset, 0)
 }
 
-private int safeToInteger(val, defaultVal=0) {
-	try {
-		if (val) {
-			return val.toFloat().round().toInteger()
-		}
-		else if (defaultVal != 0){
-			return safeToInteger(defaultVal, 0)
-		}
-		else {
-			return defaultVal
-		}
+// Settings
+private getCheckinIntervalSettingMinutes() {
+	return convertOptionSettingToInt(checkinIntervalOptions, checkinIntervalSetting) ?: 360
+}
+
+private getCheckinIntervalSetting() {
+	return settings?.checkinInterval ?: findDefaultOptionName(checkinIntervalOptions)
+}
+
+private getBatteryReportingIntervalSettingMinutes() {
+	return convertOptionSettingToInt(checkinIntervalOptions, batteryReportingIntervalSetting) ?: 720
+}
+
+private getBatteryReportingIntervalSetting() {
+	return settings?.reportBatteryEvery ?: findDefaultOptionName(checkinIntervalOptions)
+}
+
+private getCheckinIntervalOptions() {
+	[
+		[name: "10 Minutes", value: 10],
+		[name: "15 Minutes", value: 15],
+		[name: "30 Minutes", value: 30],
+		[name: "1 Hour", value: 60],
+		[name: "2 Hours", value: 120],
+		[name: "3 Hours", value: 180],
+		[name: formatDefaultOptionName("6 Hours"), value: 360],
+		[name: "9 Hours", value: 540],
+		[name: "12 Hours", value: 720],
+		[name: "18 Hours", value: 1080],
+		[name: "24 Hours", value: 1440]
+	]
+}
+
+private convertOptionSettingToInt(options, settingVal) {
+	return safeToInt(options?.find { "${settingVal}" == it.name }?.value, 0)
+}
+
+private formatDefaultOptionName(val) {
+	return "${val}${defaultOptionSuffix}"
+}
+
+private findDefaultOptionName(options) {
+	def option = options?.find { it.name?.contains("${defaultOptionSuffix}") }
+	return option?.name ?: ""
+}
+
+private getDefaultOptionSuffix() {
+	return "   (Default)"
+}
+
+private safeToInt(val, defaultVal=-1) {
+	return "${val}"?.isInteger() ? "${val}".toInteger() : defaultVal
+}
+
+private convertToLocalTimeString(dt) {
+	def timeZoneId = location?.timeZone?.ID
+	if (timeZoneId) {
+		return dt.format("MM/dd/yyyy hh:mm:ss a", TimeZone.getTimeZone(timeZoneId))
 	}
-	catch (e) {
-		logDebug "safeToInteger($val, $defaultVal) failed with error $e"
-		return 0
+	else {
+		return "$dt"
+	}	
+}
+
+private isDuplicateCommand(lastExecuted, allowedMil) {
+	!lastExecuted ? false : (lastExecuted + allowedMil > new Date().time) 
+}
+
+private logDebug(msg) {
+	if (settings?.debugOutput || settings?.debugOutput == null) {
+		log.debug "$msg"
 	}
 }
 
-def logDebug(msg) {
-	if (settings.debugOutput == null || settings.debugOutput) {
-		log.debug "${device.displayName}: $msg"
-	}
+private logTrace(msg) {
+	// log.trace "$msg"
 }

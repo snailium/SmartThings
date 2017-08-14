@@ -1,14 +1,14 @@
 /**
- *  GoControl Multifunction Siren v 1.6.2
+ *  GoControl Multifunction Siren v 1.8.2
  *
  *  Devices:
- *    GoControl/Linear (Model#: WA105DBZ-1)
+ *    GoControl/Linear (Model#: WA105DBZ-1 / ZM1601US-3)
  *    Vision Home Security (Model#: ZM1601US-5)
  *  	LinearLinc Z-Wave Siren/Strobe (Model#: 1LIWA105DBZ-2)
  *
  *  Capabilities:
  *      Alarm, Tone, Audio Notification, Switch
- *      Battery, Polling
+ *      Battery
  *   
  *   ********************************************* 
  *   ** The Speech Synthesis and Music Player   **
@@ -25,7 +25,36 @@
  *
  *  Changelog:
  *
- *    1.6.2 (08/??/2016)
+ *    1.8.2 (07/23/2017)
+ *   		- Added legacy fingerprint support for security cc check. 
+ *
+ *    1.8.1 (07/22/2017)
+ *    	- Fixed issue caused by the hub firmware update 000.018.00018
+ *    	- If you're on hub v1 or you installed the device prior to May 2016, make sure you test the device after updating to this version.
+ *
+ *    1.7.4 (04/23/2017)
+ *    	- SmartThings broke parse method response handling so switched to sendhubaction.
+ *
+ *    1.7.3 (04/09/2017)
+ *    	- Bug fix for location timezone issue.
+ *
+ *    1.7.2 (03/21/2017)
+ *    	- Fix for SmartThings TTS url changing.
+ *
+ *    1.7.1 (03/11/2017)
+ *      - Don't display off status event when already off.
+ *      - Removed polling capability.
+ *
+ *    1.7 (02/19/2017)
+ *      - Added Health Check and self polling.
+ *
+ *    1.6.4 (02/07/2017)
+ *      - Fixed all audio commands so that they don't use explit types due to SmartApps not following documented capabilities.
+ *
+ *    1.6.3 (02/06/2017)
+ *      - Fixed audio commands for speaker notify w/ sound because it doesn't use the capabilities as documented.
+ *
+ *    1.6.2 (08/30/2016)
  *      - Added another model# to header.
  *
  *    1.6.1 (08/28/2016)
@@ -100,11 +129,11 @@ metadata {
 		capability "Music Player"
 		capability "Audio Notification"
 		capability "Speech Synthesis"
-		capability "Polling"		
+		capability "Health Check"
 		capability "Switch"
 		capability "Tone"
 		
-		attribute "lastPoll", "number"
+		attribute "lastCheckin", "string"
 
 		command "customBeep" // beepLengthMS, delaySeconds, useStobe
 		command "customBoth" // delaySeconds, autoOffSeconds, useStrobe
@@ -115,10 +144,16 @@ metadata {
 		// but not in the capability code.
 		command "playTrackAtVolume"
 		command "playSoundAndTrack"
-		
+
+	
 		fingerprint mfr: "0109", prod: "2005", model: "0508" //Vision
-		fingerprint mfr: "014F", prod: "2005", model: "0503" //Linear/GoControl
-		fingerprint deviceId: "0x1000", inClusters: "0x25,0x80,0x70,0x72,0x86"
+		
+		fingerprint mfr: "014F", prod: "2005", model: "0503" //Linear/GoControl Battery Only
+		
+		fingerprint mfr: "014F", prod: "2009", model: "0903" //Linear/GoControl Powered (no battery reporting)
+		
+		fingerprint deviceId: "0x1000", inClusters: "0x25,0x70,0x72,0x86"
+		fingerprint deviceId: "0x1005", inClusters: "0x25,0x5E,0x72,0x80,0x86"
 	}
 
 	simulator {
@@ -164,6 +199,18 @@ metadata {
 			defaultValue: 0, 
 			displayDuringSetup: true, 
 			required: false
+		input "checkinInterval", "enum",
+			title: "Checkin Interval:",
+			defaultValue: checkinIntervalSetting,
+			required: false,
+			displayDuringSetup: true,
+			options: checkinIntervalOptions.collect { it.name }
+		input "batteryReportingInterval", "enum",
+			title: "Battery Reporting Interval:",
+			defaultValue: batteryReportingIntervalSetting,
+			required: false,
+			displayDuringSetup: true,
+			options: checkinIntervalOptions.collect { it.name }
 		input "debugOutput", "bool", 
 			title: "8. Enable debug logging?", 
 			defaultValue: true, 
@@ -216,37 +263,79 @@ metadata {
 def updated() {
 	if (!isDuplicateCommand(state.lastUpdated, 5000)) {
 		state.lastUpdated = new Date().time
-		state.debugOutput = validateBoolean(settings.debugOutput, true)
 		state.alarmDelaySeconds = validateRange(settings.alarmDelaySeconds, 0, 0, Integer.MAX_VALUE, "alarmDelaySeconds") 
 		state.alarmDelayStrobe = validateBoolean(settings.alarmDelayStrobe, false)
 		logDebug "Updating"
 
+		initializeCheckin()
+		
 		def cmds = []		
-		
-		if (!state.useSecureCommands) {
-			logDebug "Checking for Secure Command Support"
-			state.useSecureCommands = true
-			cmds << supportedSecurityGetCmd()
-			state.useSecureCommands = false
-		}
-		
-		cmds += configure()
-		
-		response(delayBetween(cmds, 200))
+		cmds += configure()	
+		return sendResponse(delayBetween(cmds, 200))
 	}
+}
+
+private initializeCheckin() {
+	// Set the Health Check interval so that it can be skipped once plus 2 minutes.
+	def checkInterval = ((checkinIntervalSettingMinutes * 2 * 60) + (2 * 60))
+	
+	sendEvent(name: "checkInterval", value: checkInterval, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
+	
+	startHealthPollSchedule()
+}
+
+private startHealthPollSchedule() {
+	unschedule(healthPoll)
+	switch (checkinIntervalSettingMinutes) {
+		case 5:
+			runEvery5Minutes(healthPoll)
+			break
+		case 10:
+			runEvery10Minutes(healthPoll)
+			break
+		case 15:
+			runEvery15Minutes(healthPoll)
+			break
+		case 30:
+			runEvery30Minutes(healthPoll)
+			break
+		case [60, 120]:
+			runEvery1Hour(healthPoll)
+			break
+		default:
+			runEvery3Hours(healthPoll)			
+	}
+}
+
+// Executed by internal schedule and requests a report from the device to determine if it's still online.
+def healthPoll() {
+	logTrace "healthPoll()"
+	def cmd = canReportBattery() ? batteryGetCmd() : versionGetCmd() // Not using batteryGet every time because powered GoControl device doesn't support batteryGet.
+	sendHubCommand(new physicalgraph.device.HubAction(cmd))
+}
+
+private canReportBattery() {
+	def reportEveryMS = (batteryReportingIntervalSettingMinutes * 60 * 1000)
+		
+	return (!state.lastBatteryReport || ((new Date().time) - state.lastBatteryReport > reportEveryMS)) 
+}
+
+// Executed by SmartThings if the specified checkInterval is exceeded.
+def ping() {
+	logTrace "ping()"
+	if (!isDuplicateCommand(state.lastCheckinTime, 60000)) {
+		logDebug "Attempting to ping device."
+		// Restart the polling schedule in case that's the reason why it's gone too long without checking in.
+		startHealthPollSchedule()
+		
+		return versionGetCmd() // Using versionGet because GoControlled powered device doesn't support batteryGet.
+	}	
 }
 
 private configure() {
 	def cmds = []
-	
-	if (state.isVisionMfr == null) {
-		cmds << manufacturerGetCmd()
-		cmds << "delay 5000"
-	}
-	
-	cmds << autoOffSetCmd(getAutoOffTimeValue())		
+	cmds << autoOffSetCmd(getAutoOffTimeValue())
 	cmds << batteryGetCmd()
-	
 	return cmds
 }
 
@@ -276,20 +365,6 @@ private isDuplicateCommand(lastExecuted, allowedMil) {
 	!lastExecuted ? false : (lastExecuted + allowedMil > new Date().time) 
 }
 
-def poll() {
-	def result = []
-	def minimumPollMinutes = 30
-	def lastPoll = device.currentValue("lastPoll")
-	if ((new Date().time - lastPoll) > (minimumPollMinutes * 60 * 1000)) {
-		logDebug "Poll: Refreshing because lastPoll was more than ${minimumPollMinutes} minutes ago."
-		result << batteryGetCmd()
-	}
-	else {
-		logDebug "Poll: Skipped because lastPoll was within ${minimumPollMinutes} minutes"		
-	}
-	return result
-}
-
 // Turns on siren and strobe
 def on() {
 	both()	
@@ -306,7 +381,7 @@ def customBeep(beepLengthMS, delaySeconds=0, useStrobe=false) {
 	useStrobe = validateBoolean(useStrobe, false)
 	
 	state.activeAlarm = null
-	sendEvent(getStatusEventMap("beep"))
+	sendEvent(createStatusEventMap("beep"))
 	
 	def result = []	
 	def delayMsg = ""
@@ -398,11 +473,11 @@ def turnOn(alarmType, delaySeconds, autoOffSeconds, useStrobe) {
 	return result
 }
 
-def turnOn(currentAlarmType) {
-	def result = []
+def turnOn(currentAlarmType) {	
 	def activeAlarm = state.activeAlarm
 	
-	if (activeAlarm) {	
+	if (activeAlarm) {
+		def result = []
 		if (activeAlarm.delaySeconds > 2 && activeAlarm.useStrobe) {
 			logDebug "Alarm delayed with strobe for ${activeAlarm.delaySeconds} seconds."
 			result += startDelayedAlarm(currentAlarmType)
@@ -430,8 +505,11 @@ def turnOn(currentAlarmType) {
 				logDebug "Turning on Alarm"
 			}
 		}
+		return delayBetween(result, 100)
 	}
-	return delayBetween(result, 100)
+	else {
+		return []
+	}
 }
 
 private startDelayedAlarm(currentAlarmType) {
@@ -454,7 +532,7 @@ private startDelayedAlarm(currentAlarmType) {
 	
 	result << alarmTypeGetCmd()
 			
-	sendEvent(getStatusEventMap("alarmPending"))
+	sendEvent(createStatusEventMap("alarmPending"))
 	
 	state.activeAlarm.delaySeconds = null
 	state.activeAlarm.useStrobe = null
@@ -523,7 +601,7 @@ private alarmTypeGetCmd() {
 }
 
 private getAlarmTypeParamNumber() {
-	return state.isVisionMfr ? 1 : 0
+	return isVisionMfr ? 1 : 0
 }
 
 private autoOffSetCmd(autoOff) {
@@ -531,7 +609,7 @@ private autoOffSetCmd(autoOff) {
 }
 
 private getAutoOffParamNumber() {
-	return state.isVisionMfr ? 2 : 1
+	return isVisionMfr ? 2 : 1
 }
 
 private configSetCmd(paramNumber, paramSize, paramValue) {
@@ -542,10 +620,9 @@ private configGetCmd(paramNumber) {
 	secureCmd(zwave.configurationV1.configurationGet(parameterNumber: paramNumber))
 }
 
-private manufacturerGetCmd() {
-	secureCmd(zwave.manufacturerSpecificV2.manufacturerSpecificGet())
+private versionGetCmd() {
+	secureCmd(zwave.versionV1.versionGet())
 }
-
 
 private switchOnSetCmd() {
 	secureCmd(zwave.basicV1.basicSet(value: 0xFF))
@@ -574,65 +651,96 @@ private batteryGetCmd() {
 	secureCmd(zwave.batteryV1.batteryGet())
 }
 
-private supportedSecurityGetCmd() {	
-	secureCmd(zwave.securityV1.securityCommandsSupportedGet())
-}
-
-private secureCmd(physicalgraph.zwave.Command cmd) {
-	if (state.useSecureCommands) {
-		zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
+private secureCmd(cmd) {
+	if (zwaveInfo?.zw?.contains("s") || ("0x98" in device.rawDescription?.split(" "))) {
+		return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
 	}
 	else {
-		cmd.format()
-	}
+		return cmd.format()
+	}	
 }
 
 // Parses incoming message
 def parse(String description) {	
 	def result = []
-	if (description.startsWith("Err")) {
-		log.error "Unknown Error: $description"		
+	def cmd = zwave.parse(description, commandClassVersions)
+	if (cmd) {
+		result += zwaveEvent(cmd)
 	}
-	else if (description != null && description != "updated") {
-		def cmd = zwave.parse(description, [0x71: 3, 0x85: 2, 0x70: 1, 0x30: 2, 0x26: 1, 0x25: 1, 0x20: 1, 0x72: 2, 0x80: 1, 0x86: 1, 0x59: 1, 0x73: 1, 0x98: 1, 0x7A: 1, 0x5A: 1])		
-		if (cmd) {
-			result += zwaveEvent(cmd)
-		}
-		else {
-			logDebug "Unable to parse: $cmd"
-		}
-	}
-	result << createEvent(name:"lastPoll", value: new Date().time, displayed: false, isStateChange: true)
+	else {
+		logDebug "Unable to parse: $description"
+	}	
+	if (!isDuplicateCommand(state.lastCheckinTime, 60000)) {
+		result << createLastCheckinEvent()
+	}		
 	return result
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityMessageEncapsulation cmd) {
-	def encapsulatedCmd = cmd.encapsulatedCommand([0x71: 3, 0x85: 2, 0x70: 1, 0x30: 2, 0x26: 1, 0x25: 1, 0x20: 1, 0x72: 2, 0x80: 1, 0x86: 1, 0x59: 1, 0x73: 1, 0x98: 1, 0x7A: 1, 0x5A: 1])	
-	if (encapsulatedCmd) {	
-		logDebug "encapsulated: $encapsulatedCmd"
-		zwaveEvent(encapsulatedCmd)
-	}
+private createLastCheckinEvent() {
+	logDebug "Device Checked In"
+	state.lastCheckinTime = new Date().time
+	return createEvent(name: "lastCheckin", value: convertToLocalTimeString(new Date()), displayed: false)
 }
 
-private versionGetCmd() {
-	secureCmd(zwave.versionV1.versionGet())
+private convertToLocalTimeString(dt) {
+	def timeZoneId = location?.timeZone?.ID
+	if (timeZoneId) {
+		return dt.format("MM/dd/yyyy hh:mm:ss a", TimeZone.getTimeZone(timeZoneId))
+	}
+	else {
+		return "$dt"
+	}	
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityMessageEncapsulation cmd) {
+	def result = []
+	
+	def encapCmd = cmd.encapsulatedCommand(commandClassVersions)
+	if (encapCmd) {
+		result += zwaveEvent(encapCmd)
+	}
+	else {
+		log.warn "Unable to extract encapsulated cmd from $cmd"	
+	}
+	return result
+}
+
+private getCommandClassVersions() {
+	[
+		0x20: 1,	// Basic
+		0x25: 1,	// Switch Binary
+		0x59: 1,  // AssociationGrpInfo
+		0x5A: 1,  // DeviceResetLocally
+		0x5E: 2,  // ZwaveplusInfo
+		0x70: 1,  // Configuration
+		0x71: 3,  // Notification (4)
+		0x72: 1,  // ManufacturerSpecific (1,2)
+		0x73: 1,  // Powerlevel
+		0x7A: 2,	// Firmware Update
+		0x80: 1,  // Battery
+		0x85: 2,  // Association
+		0x86: 1,	// Version (2)
+		0x98: 1		// Security
+	]
+}
+
+// Requested by health poll to verify that it's still online.
+def zwaveEvent(physicalgraph.zwave.commands.versionv1.VersionReport cmd) {
+	logTrace "VersionReport: $cmd"	
+	// Using this event for health monitoring to update lastCheckin
+	return []
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchbinaryv1.SwitchBinaryReport cmd) {
-	//logDebug "BinaryReport: $cmd"
+	logTrace "BinaryReport: $cmd"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.configurationv1.ConfigurationReport cmd) {
 	if (cmd?.parameterNumber == getAlarmTypeParamNumber()) {		
 		def val = cmd.configurationValue[0]
 		logDebug "Current Alarm Type: ${val}"
-		return response(turnOn(val))
+		return sendResponse(turnOn(val))
 	}	
-}
-
-def zwaveEvent(physicalgraph.zwave.commands.manufacturerspecificv2.ManufacturerSpecificReport cmd) {
-	//The Linear/GoControl product uses different parameter numbers than the Vision product.
-	state.isVisionMfr = (cmd.manufacturerId == 265)	
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
@@ -654,28 +762,32 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
 }
 
 private getCommandEvents(alarmValue, switchValue, statusValue) {
-	[		
-		createEvent(
-			getStatusEventMap(statusValue)
-		),
-		createEvent(
+	def result = []
+	if (device.currentValue("status") != statusValue) {
+		result << createEvent(createStatusEventMap(statusValue))
+	}
+	if (device.currentValue("alarm") != alarmValue) {
+		result << createEvent(
 			name:"alarm",
 			description: "Alarm is $alarmValue",
 			value: alarmValue, 
 			isStateChange: true, 
 			displayed: false
-		),
-		createEvent(
+		)
+	}
+	if (device.currentValue("switch") != switchValue) {
+		result << createEvent(
 			name:"switch", 
 			description: "Switch is $switchValue",
 			value: switchValue, 
 			isStateChange: true, 
 			displayed: false
 		)
-	]	
+	}
+	return result
 }
 
-private getStatusEventMap(statusValue) {
+private createStatusEventMap(statusValue) {
 	return [
 		name: "status",
 		description: "Status is $statusValue",
@@ -703,27 +815,24 @@ private getLastAlarmStateValue() {
 	return result
 }
 
+// Creates the event for the battery level.
 def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {
-	def map = [ 
-		name: "battery", 
-		unit: "%"
-	]
-	if (cmd.batteryLevel == 0xFF) {
-		map.value = 1
-		map.descriptionText = "Battery is low"
-		map.isStateChange = true
-		map.displayed = true
-	} else {
-		map.value = cmd.batteryLevel
-		map.displayed = false
-	}	
-	[createEvent(map)]
-}
-
-def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityCommandsSupportedReport cmd) {
-	state.useSecureCommands = true
-	logDebug("Secure Commands Supported")	
-	response(delayBetween(configure(), 200))
+	logTrace "BatteryReport: $cmd"
+	def val = (cmd.batteryLevel == 0xFF ? 1 : cmd.batteryLevel)
+	if (val > 100) {
+		val = 100
+	}
+	if (val < 1) {
+		val = 1
+	}
+	state.lastBatteryReport = new Date().time	
+	logDebug "Battery ${val}%"
+	
+	def isNew = (device.currentValue("battery") != val)
+			
+	def result = []
+	result << createEvent(name: "battery", value: val, unit: "%", display: isNew, isStateChange: isNew)	
+	return result
 }
 
 // Writes unexpected commands to debug log
@@ -755,50 +864,55 @@ def mute() { off() }
 def play() { both() }
 
 // Audio Notification commands
-def playTrackAtVolume(String URI, Number volume) {
+def playTrackAtVolume(URI, volume) {
 	logTrace "playTrackAtVolume($URI, $volume)"
 	playTrack(URI, volume)
 }
 
-def playSoundAndTrack(String URI, Number duration=null, String track, Number volume=null) {
+def playSoundAndTrack(URI, duration=null, track, volume=null) {
 	logTrace "playSoundAndTrack($URI, $duration, $track, $volume)"
 	playTrack(URI, volume)
 }
 
-def playTrackAndRestore(String URI, Number volume=null) {
-	logTrace "playTrackAndRestore($URI, $volume)"
-	playTrack(URI, volume) 
-}
-
-def playTrackAndResume(String URI, Number volume=null) {
-	logTrace "playTrackAndResume($URI, $volume)"
+def playTrackAndResume(URI, volume=null, otherVolume=null) {
+	if (otherVolume) {
+		// Fix for Speaker Notify w/ Sound not using command as documented.
+		volume = otherVolume
+	}
 	playTrack(URI, volume)
-}
+}	
+def playTrackAndRestore(URI, volume=null, otherVolume=null) {
+	if (otherVolume) {
+		// Fix for Speaker Notify w/ Sound not using command as documented.
+		volume = otherVolume
+	}
+	playTrack(URI, volume)
+}	
 
-def playTrack(String URI, Number volume=null) {
+def playTrack(URI, volume=null) {
 	logTrace "playTrack($URI, $volume)"
 	playText(getTextFromTTSUrl(URI), volume)
 }
 
 def getTextFromTTSUrl(ttsUrl) {
-	def urlPrefix = "https://s3.amazonaws.com/smartapp-media/tts/"
-	if (ttsUrl?.toString()?.toLowerCase()?.contains(urlPrefix)) {
-		return ttsUrl.replace(urlPrefix,"").replace(".mp3","")
+	if (ttsUrl?.toString()?.contains("/")) {
+		def startIndex = ttsUrl.lastIndexOf("/") + 1
+		ttsUrl = ttsUrl.substring(startIndex, ttsUrl.size())?.toLowerCase()?.replace(".mp3","")
 	}
 	return ttsUrl
 }
 
-def playTextAndResume(String message, Number volume=null) {
+def playTextAndResume(message, volume=null) {
 	logTrace "playTextAndResume($message, $volume)"
 	playText(message, volume) 
 }
 
-def playTextAndRestore(String message, Number volume=null) {
+def playTextAndRestore(message, volume=null) {
 	logTrace "playTextAndRestore($message, $volume)"
 	playText(message, volume=null) 
 }
 
-def playText(String message, Number volume=null) {
+def playText(message, volume=null) {
 	logTrace "playText($message, $volume)"
 	logDebug "Executing playText($message) Command"
 	message = cleanMessage(message)
@@ -859,6 +973,15 @@ def parseComplexCommand(message) {
 	return cmds
 }
 
+private sendResponse(cmds) {
+	def actions = []
+	cmds?.each { cmd ->
+		actions << new physicalgraph.device.HubAction(cmd)
+	}	
+	sendHubCommand(actions)
+	return []
+}
+
 private getComplexCmdArgs(message) {
 	def args = removeCmdPrefix(message).tokenize("_")
 	if (args.every { node -> isNumeric(node) || node in ["true","false"]}) {
@@ -876,6 +999,61 @@ private removeCmdPrefix(message) {
 		}		
 	}
 	return message
+}
+
+private getCheckinIntervalSettingMinutes() {
+	return convertOptionSettingToInt(checkinIntervalOptions, checkinIntervalSetting) ?: 720
+}
+private getCheckinIntervalSetting() {
+	return settings?.checkinInterval ?: findDefaultOptionName(checkinIntervalOptions)
+}
+private getBatteryReportingIntervalSettingMinutes() {
+	return convertOptionSettingToInt(checkinIntervalOptions, batteryReportingIntervalSetting) ?: checkinIntervalSettingMinutes
+}
+private getBatteryReportingIntervalSetting() {
+	return settings?.batteryReportingInterval ?: findDefaultOptionName(checkinIntervalOptions)
+}
+
+private getCheckinIntervalOptions() {
+	[
+		[name: "5 Minutes", value: 5],
+		[name: "10 Minutes", value: 10],
+		[name: "15 Minutes", value: 15],
+		[name: "30 Minutes", value: 30],
+		[name: "1 Hour", value: 60],
+		[name: "2 Hours", value: 120],
+		[name: "3 Hours", value: 180],
+		[name: "6 Hours", value: 360],
+		[name: "9 Hours", value: 540],
+		[name: formatDefaultOptionName("12 Hours"), value: 720],
+		[name: "18 Hours", value: 1080],
+		[name: "24 Hours", value: 1440]
+	]
+}
+
+private convertOptionSettingToInt(options, settingVal) {
+	return safeToInt(options?.find { "${settingVal}" == it.name }?.value, 0)
+}
+
+private formatDefaultOptionName(val) {
+	return "${val}${defaultOptionSuffix}"
+}
+
+private findDefaultOptionName(options) {
+	def option = options?.find { it.name?.contains("${defaultOptionSuffix}") }
+	return option?.name ?: ""
+}
+
+private getDefaultOptionSuffix() {
+	return "   (Default)"
+}
+
+private getIsVisionMfr() {
+	return zwaveInfo?.mfr == "0109"
+}
+
+private safeToInt(val, defaultVal=-1) {
+	return "${val}"?.isInteger() ? "${val}".toInteger() : defaultVal
 }
 
 private isNumeric(val) {
@@ -927,21 +1105,12 @@ private int validateRange(val, defaultVal, minVal, maxVal, desc) {
 	}
 }
 
-def describeCommands() {
-	return [
-		"customBeep": [ display: "Custom Beep", description: "{0} Beep Length in Milliseconds", parameters:["number", "number", "bool"]], // beepLengthMS, delaySeconds, useStrobe
-		"customBoth": [ display: "Custom Strobe and Siren", description: "(delaySeconds: {0}, autoOffSeconds: {1}, useStrobe: {2})", parameters:["number", "number", "bool"]],
-		"customSiren": [ display: "Custom Siren", description: "", parameters:["number", "number", "bool"]], // delaySeconds, autoOffSeconds, useStrobe
-		"customStrobe": [ display: "Custom Strobe", description: "", parameters:["number", "number"]] // delaySeconds, autoOffSeconds
-	]
-}
-
 private logDebug(msg) {
-	if (state.debugOutput || state.debugOutput == null) {
-		log.debug "${device.displayName}: $msg"
+	if (settings?.debugOutput || settings?.debugOutput == null) {
+		log.debug "$msg"
 	}
 }
 
 private logTrace(msg) {
-	//log.trace "$msg"
+	// log.trace "$msg"
 }
