@@ -1,29 +1,16 @@
 /**
- *  Zooz Power Switch / Zooz Smart Plug v1.5
- *  (Models: ZEN15, ZEN06)
+ *  Zooz Smart Plug v2.0
+ *  (Models: ZEN06)
  *
  *  Author: 
  *    Kevin LaFramboise (krlaframboise)
  *
- *  URL to documentation: https://community.smartthings.com/t/release-zooz-power-switch-zooz-smart-plug/97220?u=krlaframboise
+ *  URL to documentation: 
  *    
  *
  *  Changelog:
  *
- *    1.5 (07/30/2018)
- *      - Added support for new mobile app.
- *
- *    1.4 (12/17/2017)
- *      - Added Acceleration capability for detecting when power is on or off and setting for the active threshold.
- *      - Added overload protection override setting.
- *
- *    1.2 (09/09/2017)
- *      - The device seems to occasionallly report values that are way above a realitic value for some users so add a check that logs the value as a warning instead of creating events for it.
- *
- *    1.1 (09/06/2017)
- *      - Switched history to value tile to fix iOS bug.
- *
- *    1.0 (07/26/2017)
+ *    2.0 (12/02/2018)
  *      - Initial Release
  *
  *
@@ -39,7 +26,7 @@
  */
 metadata {
 	definition (
-		name: "Zooz Power Switch", 
+		name: "Zooz Smart Plug", 
 		namespace: "krlaframboise", 
 		author: "Kevin LaFramboise",
 		vid:"generic-switch-power-energy"
@@ -70,8 +57,6 @@ metadata {
 				
 		command "reset"
 
-		fingerprint mfr:"027A", prod:"0101", model:"000D", deviceJoinName: "Zooz Power Switch"
-		
 		fingerprint mfr:"027A", prod:"0101", model:"000A", deviceJoinName: "Zooz Smart Plug"
 	}
 
@@ -566,6 +551,7 @@ private getConfigParams() {
 		powerFailureRecoveryParam,
 		onOffNotificationsParam,
 		ledIndicatorParam,
+		manualControlParam,
 		powerValueChangeParam,
 		powerPercentageChangeParam,
 		powerReportIntervalParam,
@@ -588,8 +574,13 @@ private getOnOffNotificationsParam() {
 }
 
 private getLedIndicatorParam() {
-	return createConfigParamMap(27, "LED Power Consumption Indicator", 1, ["Always Show${defaultOptionSuffix}":0, "Show for 5 seconds when turned on or off":1], "ledIndicator")
+	return createConfigParamMap(27, "LED Power Consumption Indicator", 1, ["Always Show":0, "Show when On${defaultOptionSuffix}":1, "Show for 5 seconds when turned on or off":2, "Always Off":3], "ledIndicator")
 }
+
+private getManualControlParam() {
+	return createConfigParamMap(30, "Manual Control", 1, ["Disabled":0, "Enabled${defaultOptionSuffix}":1], "manualControl")
+}
+
 
 private getPowerValueChangeParam() {
 	return createConfigParamMap(151, "Power Report Value Change", 2, getPowerValueOptions(), "powerValueChange")
