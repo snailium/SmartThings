@@ -1,5 +1,5 @@
 /**
- *  Zooz S2 Multisiren v1.1
+ *  Zooz S2 Multisiren v1.3
  *  (Models: ZSE19)
  *
  *  Author: 
@@ -9,6 +9,13 @@
  *
  *
  *  Changelog:
+ *
+ *    1.3 (08/07/2019)
+ *      - Enhanced UI for new mobile app.
+ *			- Added Tone capability and "Beep Sound" setting.
+ *
+ *    1.2 (05/06/2018)
+ *      - Added volume setting.
  *
  *    1.1 (12/09/2018)
  *      - Added tamper capability.
@@ -33,7 +40,8 @@ metadata {
 		name: "Zooz S2 Multisiren", 
 		namespace: "krlaframboise", 
 		author: "Kevin LaFramboise",
-		vid:"generic-siren"
+		ocfDeviceType: "x.com.st.d.siren", 
+		vid: "generic-siren-11"
 	) {
 		capability "Actuator"
 		capability "Sensor"
@@ -41,6 +49,7 @@ metadata {
 		capability "Switch"		
 		capability "Audio Notification"
 		capability "Music Player"
+		capability "Tone"
 		capability "Speech Synthesis"
 		capability "Switch Level"
 		capability "Temperature Measurement"
@@ -140,6 +149,18 @@ metadata {
 			defaultValue: "0",
 			required: false,
 			options: setDefaultOption(switchOnActionOptions, "0")
+			
+		input "beepSound", "enum",
+			title: "Beep Sound",
+			defaultValue: "1",
+			required: false,
+			options: setDefaultOption(chimeSoundOptions, "1")
+			
+		input "chimeVolume", "enum",
+			title: "Chime Volume",
+			defaultValue: chimeVolumeSetting,
+			required: false,
+			options: setDefaultOption(chimeVolumeOptions, "32")
 
 		// input "tempOffset", "enum",
 			// title: "Temperature Offset",
@@ -160,6 +181,9 @@ metadata {
 	}
 }
 
+private getChimeVolumeSetting() {
+	return settings?.chimeVolume ?: "32"
+}
 
 def installed () { 
 	return response(refresh())
@@ -197,6 +221,10 @@ def configure() {
 		cmds << versionGetCmd()
 	}
 	
+	logDebug "CHANGING Volume to ${Integer.parseInt(chimeVolumeSetting, 16)}%"
+	cmds << soundSwitchConfigSetVolumeCmd(chimeVolumeSetting)
+	state.chimeVolume = chimeVolumeSetting
+	
 	configParams.each { 
 		logDebug "CHANGING ${it.name}(#${it.num}) from ${getParamStoredValue(it.num)} to ${it.value}"
 		cmds << configSetCmd(it, it.value)
@@ -222,6 +250,12 @@ def on() {
 			log.warn "Ignoring 'on' command because the Switch On Action setting is set to 'Do Nothing'"
 		}
 	}
+}
+
+
+def beep() {
+	logDebug "beep()..."
+	return playSound(safeToInt(settings?.beepSound, 0))
 }
 
 
@@ -420,6 +454,16 @@ private switchBinarySetCmd(val) {
 	return secureCmd(zwave.switchBinaryV1.switchBinarySet(switchValue: val))
 }
 
+private soundSwitchConfigSetVolumeCmd(volume) {
+	def cmd = "7905${volume}01"
+	if (isSecurityEnabled()) {
+		return "988100${cmd}"
+	}
+	else {
+		return cmd
+	}
+}
+
 private configSetCmd(param, value) {
 	return secureCmd(zwave.configurationV1.configurationSet(parameterNumber: param.num, size: param.size, scaledConfigurationValue: value))
 }
@@ -429,12 +473,16 @@ private configGetCmd(param) {
 }
 
 private secureCmd(cmd) {
-	if (zwaveInfo?.zw?.contains("s") || ("0x98" in device.rawDescription?.split(" "))) {
+	if (isSecurityEnabled()) {
 		return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
 	}
 	else {
 		return cmd.format()
 	}	
+}
+
+private isSecurityEnabled() {
+	return zwaveInfo?.zw?.contains("s") || ("0x98" in device.rawDescription?.split(" "))
 }
 
 
@@ -627,7 +675,7 @@ private getSyncStatus() {
 }
 
 private getPendingChanges() {
-	return (configParams.count { isConfigParamSynced(it) ? 0 : 1 })
+	return (configParams.count { isConfigParamSynced(it) ? 0 : 1 } + (settings?.chimeVolume != state.chimeVolume ? 1 : 0))
 }
 
 private isConfigParamSynced(param) {
@@ -794,10 +842,30 @@ private getSwitchOnActionOptions() {
 		"on": "Turn On Siren"	
 	]
 	
-	(1..99).each {
+	(1..37).each {
 		options["${it}"] = "Play Sound #${it}"
 	}	
 	return options
+}
+
+private getChimeSoundOptions() {
+	def options = [:]	
+	(1..37).each {
+		options["${it}"] = "Sound #${it}"
+	}	
+	return options
+}
+
+private getChimeVolumeOptions() {
+	def options = [:]
+	[1,10,20,30,40,50,60,70,80,90,100].each {
+		options["${convertToHex(it)}"] = "${it}%"
+	}
+	return options
+}
+
+private convertToHex(num) {
+	return Integer.toHexString(num).padLeft(2, "0").toUpperCase()
 }
 
 private getTempOffsetOptions() {
