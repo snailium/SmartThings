@@ -1,5 +1,5 @@
 /**
- *  Zooz S2 Multisiren v1.3
+ *  Zooz S2 Multisiren v1.4
  *  (Models: ZSE19)
  *
  *  Author: 
@@ -9,6 +9,15 @@
  *
  *
  *  Changelog:
+ *
+ *    1.4 (05/24/2020)
+ *      - Added lifeline association check and add the association if it wasn't automatically added during inclusion.
+ *
+ *    1.3.2 (05/18/2020)
+ *      - Fixed bug with health check interval.
+ *
+ *    1.3.1 (03/13/2020)
+ *      - Fixed bug with enum settings that was caused by a change ST made in the new mobile app.
  *
  *    1.3 (08/07/2019)
  *      - Enhanced UI for new mobile app.
@@ -193,6 +202,8 @@ def installed () {
 def updated() {	
 	if (!isDuplicateCommand(state.lastUpdated, 3000)) {
 		state.lastUpdated = new Date().time
+		
+		logDebug "updated()..."
 
 		runIn(2, updateSyncStatus)
 		
@@ -206,6 +217,8 @@ def updated() {
 
 
 def configure() {	
+	logDebug "configure()..."
+
 	runIn(5, updateSyncStatus)
 			
 	def cmds = []
@@ -219,6 +232,14 @@ def configure() {
 	
 	if (!device.currentValue("firmwareVersion")) {
 		cmds << versionGetCmd()
+	}
+		
+	if (!state.linelineAssoc) {
+		if (state.linelineAssoc != null) {
+			logDebug "Adding missing lineline association..."
+			cmds << lifelineAssociationSetCmd()
+		}
+		cmds << lifelineAssociationGetCmd()
 	}
 	
 	logDebug "CHANGING Volume to ${Integer.parseInt(chimeVolumeSetting, 16)}%"
@@ -434,6 +455,14 @@ private versionGetCmd() {
 	return secureCmd(zwave.versionV1.versionGet())
 }
 
+private lifelineAssociationSetCmd() {
+	return secureCmd(zwave.associationV2.associationSet(groupingIdentifier: 1, nodeId: [zwaveHubNodeId]))
+}
+
+private lifelineAssociationGetCmd() {
+	return secureCmd(zwave.associationV2.associationGet(groupingIdentifier: 1))
+}
+
 private basicGetCmd() {
 	return secureCmd(zwave.basicV1.basicGet())
 }
@@ -589,6 +618,19 @@ def zwaveEvent(physicalgraph.zwave.commands.versionv1.VersionReport cmd) {
 }
 
 
+def zwaveEvent(physicalgraph.zwave.commands.associationv2.AssociationReport cmd) {
+	logTrace "AssociationReport: ${cmd}"
+	
+	updateSyncStatus("Syncing...")
+	runIn(5, updateSyncStatus)
+	
+	if (cmd.groupingIdentifier == 1) {
+		state.linelineAssoc = (cmd.nodeId == [zwaveHubNodeId]) ? true : false
+	}
+	return []
+}
+
+
 def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {
 	logTrace "BatteryReport: $cmd"
 	
@@ -631,7 +673,7 @@ def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport 
 }
 
 private updateHealthCheckInterval(minutes) {
-	def minReportingInterval = calculateMinimumReportingInterval()
+	def minReportingInterval = (((reportingIntervalParam.value < 60) ? 60 : reportingIntervalParam.value) * 60)
 	
 	if (state.minReportingInterval != minReportingInterval) {
 		state.minReportingInterval = minReportingInterval
@@ -644,15 +686,6 @@ private updateHealthCheckInterval(minutes) {
 		
 		sendEvent(eventMap)
 	}	
-}
-
-private calculateMinimumReportingInterval() {
-	if (reportingIntervalParam.value < (30 * 60)) {
-		return (30 * 60)
-	}
-	else {
-		return reportingIntervalParam.value
-	}
 }
 
 def updateSyncStatus(status=null) {	
@@ -675,7 +708,7 @@ private getSyncStatus() {
 }
 
 private getPendingChanges() {
-	return (configParams.count { isConfigParamSynced(it) ? 0 : 1 } + (settings?.chimeVolume != state.chimeVolume ? 1 : 0))
+	return (configParams.count { isConfigParamSynced(it) ? 0 : 1 } + (settings?.chimeVolume != state.chimeVolume ? 1 : 0) + (!state.linelineAssoc ? 1 : 0))
 }
 
 private isConfigParamSynced(param) {
@@ -794,7 +827,7 @@ private getParam(num, name, size, defaultVal, options=null) {
 }
 
 private setDefaultOption(options, defaultVal) {
-	return options?.collect { k, v ->
+	return options?.collectEntries { k, v ->
 		if ("${k}" == "${defaultVal}") {
 			v = "${v} [DEFAULT]"		
 		}
@@ -950,5 +983,5 @@ private logDebug(msg) {
 }
 
 private logTrace(msg) {
-	log.trace "$msg"
+	// log.trace "$msg"
 }
