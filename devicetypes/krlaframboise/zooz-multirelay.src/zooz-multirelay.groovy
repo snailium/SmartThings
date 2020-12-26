@@ -1,5 +1,5 @@
 /**
- *  Zooz MultiRelay v1.2
+ *  Zooz MultiRelay v1.3.1
  *  (Models: ZEN16)
  *
  *  Author:
@@ -8,6 +8,15 @@
  *	Documentation: https://community.smartthings.com/t/release-zooz-multirelay-zen16/181057
  *
  *  Changelog:
+ *
+ *    1.3.1 (09/16/2020)
+ *      - Added option 2 for config params 12, 13, and 14. (FIRMWARE >= 1.02)
+ *
+ *    1.3 (09/02/2020)
+ *      - Added support for firmware 1.03
+ *
+ *    1.2.1 (08/10/2020)
+ *      - Added ST workaround for S2 Supervision bug with MultiChannel Devices.
  *
  *    1.2 (04/15/2020)
  *      - Added support for firmware 1.02
@@ -465,6 +474,16 @@ def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityMessageEncapsulat
 
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
+	// Workaround that was added to all SmartThings Multichannel DTHs.
+	if (cmd.commandClass == 0x6C && cmd.parameter.size >= 4) { // Supervision encapsulated Message
+		// Supervision header is 4 bytes long, two bytes dropped here are the latter two bytes of the supervision header
+		cmd.parameter = cmd.parameter.drop(2)
+		// Updated Command Class/Command now with the remaining bytes
+		cmd.commandClass = cmd.parameter[0]
+		cmd.command = cmd.parameter[1]
+		cmd.parameter = cmd.parameter.drop(2)
+	}
+	
 	def encapsulatedCommand = cmd.encapsulatedCommand(commandClassVersions)
 
 	if (encapsulatedCommand) {
@@ -605,7 +624,11 @@ private getConfigParams() {
 		relay3AutoOnUnitParam,
 		relay1ManualControlParam,
 		relay2ManualControlParam,
-		relay3ManualControlParam
+		relay3ManualControlParam,
+		relay1BehaviorParam,
+		relay2BehaviorParam,
+		relay3BehaviorParam,
+		dcMotorModeParam
 	]
 }
 
@@ -634,7 +657,7 @@ private getRelayTypeParam(num, relay) {
 		0:"Momentary Switch",
 		1:"Toggle Switch",
 		2:"Toggle Switch (any change)",
-		3: "Garage Door (FIRMWARE >= 1.02)"
+		3:"Garage Door (FIRMWARE >= 1.02)"
 	]
 	return getParam(num, "Switch Type for Relay ${relay}", 1, 2, options)
 }
@@ -681,7 +704,12 @@ private getRelay3ManualControlParam() {
 	return getRelayManualControlParam(14, 3)
 }
 private getRelayManualControlParam(num, relay) {
-	return getParam(num, "Enable/Disable Manual Control for Relay ${relay}", 1, 1, [0:"Disabled", 1:"Enabled"])
+	def options = [
+		0:"Disabled", 
+		1:"Enabled", 
+		2:"Disabled with On/Off Reporting (FIRMWARE >= 1.02)"
+	]
+	return getParam(num, "Manual Control for Relay ${relay}", 1, 1, options)
 }
 
 
@@ -711,6 +739,31 @@ private getAutoOnOffUnitParam(num, onOff, relay) {
 	]
 	return getParam(num, "Auto Turn-${onOff} Timer Unit for Relay ${relay}", 1, 0, options, null, 1.01)
 }
+
+
+private getRelay1BehaviorParam() {
+	return getRelayBehaviorParam(21, 1)
+}
+private getRelay2BehaviorParam() {
+	return getRelayBehaviorParam(22, 2)
+}
+private getRelay3BehaviorParam() {
+	return getRelayBehaviorParam(23, 3)
+}
+private getRelayBehaviorParam(num, relay) {
+	def options = [
+		0:"NO (reports on when switch on)",
+		1:"NC (reports on when switch off)",
+		2:"NC (reports on when switch on)"
+	]
+	return getParam(num, "Relay ${relay} Behavior (FIRMWARE >= 1.03)", 1, 0, options, null, 1.03)
+}
+
+
+private getDcMotorModeParam() {
+	return getParam(24, "DC Motor Mode (FIRMWARE >= 1.03)", 1, 0, [0:"Disabled", 1:"Enabled"], null, 1.03)
+}
+
 
 private getParam(num, name, size, defaultVal, options=null, range=null, firmware=null) {
 	def val = safeToInt((settings ? settings["configParam${num}"] : null), defaultVal)
